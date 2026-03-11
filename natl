@@ -75,6 +75,34 @@ def fetch_ollama_models(base_url: str) -> list[str]:
         return []
 
 
+def check_ollama_reachable(base_url: str, timeout: int = 3) -> bool:
+    """Return True if Ollama responds at base_url, else False."""
+    try:
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/api/tags",
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as _:
+            return True
+    except Exception:
+        return False
+
+
+def warn_ollama_unreachable(base_url: str) -> None:
+    """Print a clear message and exit when Ollama is not reachable."""
+    url = base_url.rstrip("/")
+    local = "localhost" in url or "127.0.0.1" in url
+    print("natl: no se pudo conectar con Ollama.", file=sys.stderr)
+    if local:
+        print(
+            "Ollama no está en marcha en esta máquina. Inicia el servidor con: ollama serve",
+            file=sys.stderr,
+        )
+    else:
+        print(f"Comprueba que el servicio esté activo en {url}", file=sys.stderr)
+    sys.exit(1)
+
+
 def run_config_menu() -> None:
     cfg = load_config()
     while True:
@@ -234,6 +262,9 @@ def main() -> None:
     prompt = get_prompt(query, PROMPT_FILE, prompt_suffix)
     if explain:
         prompt += "\n\nIf helpful, add one short line of explanation after the command, prefixed with # "
+
+    if not check_ollama_reachable(ollama_url):
+        warn_ollama_unreachable(ollama_url)
 
     raw = call_ollama(ollama_url, model, prompt)
     cmd = clean_command(raw)

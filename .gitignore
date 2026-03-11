@@ -1,5 +1,6 @@
-# Copias de seguridad (p. ej. uninstall.sh puede crear .bak)
+# Backup
 *.bak
+*.orig
 *~
 
 # Editor / IDE
@@ -7,13 +8,37 @@
 .vscode/
 *.swp
 *.swo
+.project
+.settings/
+*.sublime-*
 
-# macOS
-.DS_Store
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
 
-# Windows
-Thumbs.db
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
 
-# Logs o caché si se añaden en el futuro
+# Logs and cache
 *.log
 .cache/
+
+# OS
+.DS_Store
+Thumbs.db
