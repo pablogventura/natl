@@ -8,8 +8,10 @@ Sin argumentos: menú de configuración interactivo.
 
 import argparse
 import json
+import math
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -24,6 +26,11 @@ CONFIG_DIR = os.path.join(
 )
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
+DATA_DIR = os.path.join(
+    os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
+    "natl",
+)
+DEFAULT_MAN_INDEX_PATH = os.path.join(DATA_DIR, "man_index.json")
 VERSION_FILE = os.path.join(SCRIPT_DIR, "VERSION")
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -44,6 +51,10 @@ DEFAULT_CONFIG = {
     "ollama_url": DEFAULT_OLLAMA_URL,
     "prompt_suffix": "",
     "explain_default": False,
+    "use_rag": False,
+    "embedding_model": "nomic-embed-text",
+    "man_index_path": DEFAULT_MAN_INDEX_PATH,
+    "man_top_k": 5,
 }
 
 
@@ -101,6 +112,36 @@ def check_ollama_reachable(base_url: str, timeout: int = 3) -> bool:
         return False
 
 
+def call_ollama_embed(base_url: str, model: str, text: str, timeout: int = 60) -> list[float]:
+    """Get embedding vector for text from Ollama. Returns list of floats."""
+    body = json.dumps(
+        {"model": model, "input": text},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/embed",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    # Single input returns "embedding", multiple return "embeddings"
+    emb = data.get("embedding") or (data.get("embeddings") or [[]])[0]
+    return emb if isinstance(emb, list) else []
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
 def warn_ollama_unreachable(base_url: str) -> None:
     """Print a clear message and exit when Ollama is not reachable."""
     url = base_url.rstrip("/")
@@ -116,6 +157,139 @@ def warn_ollama_unreachable(base_url: str) -> None:
     sys.exit(1)
 
 
+def list_man_pages(section: int | None = 1) -> list[str]:
+    """Return list of man page names (e.g. ['ls', 'find']). Section 1 = user commands."""
+    try:
+        result = subprocess.run(
+            ["man", "-w"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "MANPATH": os.environ.get("MANPATH", "")},
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+        paths = result.stdout.strip().split(":")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    names: set[str] = set()
+    for path in paths:
+        if not os.path.isdir(path):
+            continue
+        for root, _dirs, files in os.walk(path):
+            for f in files:
+                if not f.endswith(".gz"):
+                    continue
+                # e.g. ls.1.gz -> ls, printf.3.gz -> printf
+                base = f[:-3]  # strip .gz
+                if "." in base:
+                    name, sec = base.rsplit(".", 1)
+                    if section is None or sec == str(section):
+                        names.add(name)
+    return sorted(names)
+
+
+def get_man_text(name: str) -> str:
+    """Get plain text content of a man page."""
+    try:
+        result = subprocess.run(
+            ["man", "--no-hyphenation", name],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env={**os.environ, "COLUMNS": "80", "MANPAGER": "cat"},
+        )
+        if result.returncode == 0 and result.stdout:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return ""
+
+
+def chunk_text(text: str, source: str, max_chars: int = 600) -> list[dict]:
+    """Split man text into chunks. Each chunk has 'text' and 'source'."""
+    chunks: list[dict] = []
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    current: list[str] = []
+    current_len = 0
+    for p in paragraphs:
+        if current_len + len(p) + 2 > max_chars and current:
+            chunks.append({"text": "\n\n".join(current), "source": source})
+            current = []
+            current_len = 0
+        current.append(p)
+        current_len += len(p) + 2
+    if current:
+        chunks.append({"text": "\n\n".join(current), "source": source})
+    return chunks
+
+
+def build_man_index(
+    ollama_url: str,
+    embedding_model: str,
+    index_path: str,
+    section: int = 1,
+    max_pages: int | None = 500,
+) -> None:
+    """Build embedding index from man pages and save to index_path."""
+    names = list_man_pages(section=section)
+    if max_pages is not None:
+        names = names[:max_pages]
+    if not names:
+        print("No man pages found.", file=sys.stderr)
+        return
+    os.makedirs(os.path.dirname(index_path) or ".", exist_ok=True)
+    all_chunks: list[dict] = []
+    total = len(names)
+    for i, name in enumerate(names):
+        text = get_man_text(name)
+        if not text:
+            continue
+        source = f"{name}({section})"
+        for c in chunk_text(text, source):
+            all_chunks.append(c)
+        if (i + 1) % 50 == 0:
+            print(f"  Pages {i + 1}/{total} ...", file=sys.stderr)
+    print(f"Embedding {len(all_chunks)} chunks with {embedding_model} ...", file=sys.stderr)
+    for j, c in enumerate(all_chunks):
+        try:
+            c["embedding"] = call_ollama_embed(ollama_url, embedding_model, c["text"])
+        except Exception as e:
+            print(f"  Embedding failed for chunk: {e}", file=sys.stderr)
+            c["embedding"] = []
+        if (j + 1) % 20 == 0:
+            print(f"  Chunks {j + 1}/{len(all_chunks)} ...", file=sys.stderr)
+    out = {
+        "embedding_model": embedding_model,
+        "chunks": [{"text": c["text"], "source": c["source"], "embedding": c["embedding"]} for c in all_chunks if c.get("embedding")],
+    }
+    with open(index_path, "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=None, ensure_ascii=False)
+    print(f"Index saved: {index_path} ({len(out['chunks'])} chunks)", file=sys.stderr)
+
+
+def load_man_index(index_path: str) -> dict | None:
+    """Load man index from JSON. Returns None if missing or invalid."""
+    path = os.path.expanduser(index_path)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def search_man_index(index: dict, query_embedding: list[float], top_k: int) -> list[dict]:
+    """Return top_k chunks by cosine similarity to query_embedding."""
+    chunks = index.get("chunks") or []
+    if not query_embedding or not chunks:
+        return []
+    scored = [(cosine_similarity(c.get("embedding") or [], query_embedding), c) for c in chunks]
+    scored.sort(key=lambda x: -x[0])
+    return [c for _s, c in scored[:top_k]]
+
+
 def run_config_menu() -> None:
     cfg = load_config()
     while True:
@@ -128,6 +302,9 @@ def run_config_menu() -> None:
         print("5) Listar modelos disponibles (Ollama)")
         print("6) Ver configuración completa")
         print("7) Restaurar valores por defecto")
+        print("8) Usar RAG (man pages)        →", "sí" if cfg.get("use_rag") else "no")
+        print("9) Modelo de embeddings       →", cfg.get("embedding_model", DEFAULT_CONFIG["embedding_model"]))
+        print("10) Construir índice de man pages (RAG)")
         print("0) Salir")
         try:
             op = input("\nOpción [0]: ").strip() or "0"
@@ -171,15 +348,40 @@ def run_config_menu() -> None:
             cfg = DEFAULT_CONFIG.copy()
             save_config(cfg)
             print("Restaurado.")
+        elif op == "8":
+            cfg["use_rag"] = not cfg.get("use_rag", False)
+            save_config(cfg)
+            print("RAG (man pages):", "activado" if cfg["use_rag"] else "desactivado")
+        elif op == "9":
+            default_emb = cfg.get("embedding_model") or DEFAULT_CONFIG["embedding_model"]
+            val = input(f"Modelo de embeddings [{default_emb}]: ").strip()
+            if val:
+                cfg["embedding_model"] = val
+                save_config(cfg)
+                print("Guardado.")
+        elif op == "10":
+            if not check_ollama_reachable(cfg["ollama_url"]):
+                print("Ollama no está disponible. Inicia el servidor (ollama serve).", file=sys.stderr)
+            else:
+                emb = cfg.get("embedding_model") or DEFAULT_CONFIG["embedding_model"]
+                path = os.path.expanduser(cfg.get("man_index_path") or DEFAULT_MAN_INDEX_PATH)
+                print("Construyendo índice (sección 1, máx. 500 páginas) ...", file=sys.stderr)
+                build_man_index(cfg["ollama_url"], emb, path, section=1, max_pages=500)
         else:
             print("Opción no válida.")
     print("Configuración guardada en:", CONFIG_FILE)
 
 
-def get_prompt(query: str, prompt_path: str, suffix: str = "") -> str:
+def get_prompt(
+    query: str,
+    prompt_path: str,
+    suffix: str = "",
+    man_docs: str = "",
+) -> str:
     if os.path.isfile(prompt_path):
         with open(prompt_path, encoding="utf-8") as f:
             template = f.read()
+        template = template.replace("{man_docs}", man_docs)
         out = template.replace("{user_request}", query)
     else:
         out = (
@@ -261,24 +463,59 @@ def main() -> None:
         help="Mostrar versión y salir",
     )
     parser.add_argument(
+        "--build-man-index",
+        action="store_true",
+        help="Build embedding index from man pages (for RAG) and exit",
+    )
+    parser.add_argument(
         "query",
         nargs="*",
         help="Texto en lenguaje natural",
     )
     args = parser.parse_args()
 
+    cfg = load_config()
+    ollama_url = os.environ.get("OLLAMA_URL") or cfg["ollama_url"]
+
+    if args.build_man_index:
+        if not check_ollama_reachable(ollama_url):
+            warn_ollama_unreachable(ollama_url)
+        emb_model = cfg.get("embedding_model") or DEFAULT_CONFIG["embedding_model"]
+        index_path = os.path.expanduser(cfg.get("man_index_path") or DEFAULT_MAN_INDEX_PATH)
+        print("Building man page index (section 1, max 500 pages) ...", file=sys.stderr)
+        build_man_index(ollama_url, emb_model, index_path, section=1, max_pages=500)
+        sys.exit(0)
+
     query = " ".join(args.query).strip()
     if not query:
         run_config_menu()
         sys.exit(0)
 
-    cfg = load_config()
     model = args.model or os.environ.get("NATL_MODEL") or cfg["model"]
-    ollama_url = os.environ.get("OLLAMA_URL") or cfg["ollama_url"]
     explain = args.explain or cfg["explain_default"]
     prompt_suffix = cfg.get("prompt_suffix", "")
 
-    prompt = get_prompt(query, PROMPT_FILE, prompt_suffix)
+    man_docs_block = ""
+    if cfg.get("use_rag"):
+        index_path = os.path.expanduser(cfg.get("man_index_path") or DEFAULT_MAN_INDEX_PATH)
+        index = load_man_index(index_path)
+        if index and check_ollama_reachable(ollama_url):
+            top_k = int(cfg.get("man_top_k") or 5)
+            try:
+                query_emb = call_ollama_embed(
+                    ollama_url,
+                    index.get("embedding_model") or cfg.get("embedding_model") or DEFAULT_CONFIG["embedding_model"],
+                    query,
+                )
+                hits = search_man_index(index, query_emb, top_k)
+                if hits:
+                    parts = [f"[{c.get('source', '')}]\n{c.get('text', '')}" for c in hits]
+                    man_docs_block = "\n\n---\n\n".join(parts)
+                    man_docs_block = "\nRelevant documentation (use only to pick command and flags):\n\n" + man_docs_block + "\n"
+            except Exception:
+                pass
+
+    prompt = get_prompt(query, PROMPT_FILE, prompt_suffix, man_docs=man_docs_block)
     if explain:
         prompt += "\n\nIf helpful, add one short line of explanation after the command, prefixed with # "
 
@@ -289,9 +526,7 @@ def main() -> None:
     cmd = clean_command(raw)
 
     if is_dangerous(cmd):
-        print("Seguridad: comando rechazado por política.", file=sys.stderr)
-        sys.exit(1)
-
+        cmd = "# WARNING: potentially destructive - review before running\n" + cmd
     print(cmd)
 
 

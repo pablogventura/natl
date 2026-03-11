@@ -6,6 +6,7 @@ Rules:
 - Assume GNU/Linux environment
 - Prefer standard POSIX utilities
 - Never generate destructive commands (rm -rf, mkfs, dd, etc.)
+{man_docs}
 
 Request:
 {user_request}

@@ -85,8 +85,21 @@ Running **`natl`** with no arguments opens an interactive configuration menu:
 - **List available models** — Show models reported by your Ollama instance
 - **View full config** — Show current config JSON
 - **Restore defaults** — Reset all options
+- **Use RAG (man pages)** — Toggle retrieval-augmented generation: inject relevant man page snippets into the prompt (requires an index)
+- **Embedding model** — Ollama model for embeddings (e.g. `nomic-embed-text`); used when building the index and when searching
+- **Build man page index** — Build the embedding index from man section 1 (user commands); run once after enabling RAG, or use `natl --build-man-index`
 
 Settings are saved to `~/.config/natl/config.json` and apply to all runs, including the Ctrl+G widget.
+
+### RAG: man page index (optional)
+
+To improve command accuracy, you can index man pages with embeddings and inject relevant snippets into the prompt:
+
+1. Pull an embedding model in Ollama, e.g. `ollama pull nomic-embed-text`
+2. Build the index: `natl --build-man-index` (or use option **10** in the config menu). This scans man section 1, chunks pages, and embeds them via Ollama. The index is saved to `~/.local/share/natl/man_index.json` (or the path set in config).
+3. In the config menu, enable **8) Usar RAG (man pages)**. From then on, each query will retrieve the top-k most similar chunks and add them to the prompt.
+
+Config keys: `use_rag`, `embedding_model`, `man_index_path`, `man_top_k` (default 5).
 
 ### In the prompt (recommended)
 
@@ -120,9 +133,11 @@ Environment variables (override the config file):
 - **`NATL_MODEL`** — Model to use.
 - **`OLLAMA_URL`** — Ollama API URL.
 
+When RAG is enabled, the config file may also contain: **`use_rag`**, **`embedding_model`** (e.g. `nomic-embed-text`), **`man_index_path`**, **`man_top_k`**.
+
 ## Security
 
-The script blocks commands that match dangerous patterns (e.g. `rm -rf /`, `mkfs`, `dd` to devices, fork bombs). The list is in the script; you can review and extend it.
+Commands that match dangerous patterns (e.g. `rm -rf /`, `mkfs`, `dd` to devices, fork bombs) are still generated, but a comment line is prepended: `# WARNING: potentially destructive - review before running`. You see the warning in the prompt and can edit or skip the command. The pattern list is in the script; you can review and extend it.
 
 ## Project layout
 
