@@ -1,110 +1,249 @@
-#!/usr/bin/env bash
-#
-# natl - Natural Language to Linux
-# Traduce instrucciones en lenguaje natural a comandos de shell (Ollama).
-# El comando se inserta en la línea del prompt sin ejecutarse.
-#
+#!/usr/bin/env python3
+"""
+natl - Natural Language to Linux
+Traduce instrucciones en lenguaje natural a un comando de shell (Ollama).
+El comando se imprime en stdout para insertarlo en el prompt sin ejecutarse.
+Sin argumentos: menú de configuración interactivo.
+"""
 
-set -e
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
 
-# Directorio del script (resuelve symlinks para que funcione desde ~/bin)
-_script_path="${BASH_SOURCE[0]}"
-[[ -L "$_script_path" ]] && _script_path=$(readlink -f "$_script_path")
-NATL_DIR="${NATL_DIR:-$(cd "$(dirname "$_script_path")" && pwd)}"
-PROMPT_FILE="${NATL_DIR}/prompt.txt"
-OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
-MODEL="${NATL_MODEL:-llama3.2}"
-EXPLAIN=false
+# Directorio del script (resuelve symlinks para funcionar desde ~/bin)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(os.path.realpath(__file__)))
+PROMPT_FILE = os.path.join(SCRIPT_DIR, "prompt.txt")
 
-# Comandos o patrones considerados peligrosos (no se ejecutan)
-DANGEROUS_PATTERNS=(
-    'rm\s+-rf\s+/'
-    'rm\s+-rf\s+/\s'
-    'mkfs\.'
-    '\bdd\s+if=.*of=/dev'
-    ':(){.*|:&};:'  # fork bomb
-    '>\s*/dev/sd'
-    'chmod\s+-R\s+777\s+/'
+CONFIG_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "natl",
 )
+CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
-usage() {
-    cat <<EOF
-Uso: natl [OPCIONES] <texto en lenguaje natural>
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_MODEL = "llama3.2"
 
-Traduce la petición a un único comando de Linux e imprime el comando
-(para insertarlo en el prompt con la integración de shell).
+DANGEROUS_PATTERNS = [
+    r"rm\s+-rf\s+/",
+    r"rm\s+-rf\s+/\s",
+    r"mkfs\.",
+    r"\bdd\s+if=.*of=/dev",
+    r":\s*\(\s*\)\s*\{.*\|:\s*&\s*\}\s*;?\s*:",
+    r">\s*/dev/sd",
+    r"chmod\s+-R\s+777\s+/",
+]
 
-Opciones:
-  -m, --model MODELO   Modelo Ollama (default: ${MODEL})
-  -e, --explain        Pedir al LLM que incluya breve explicación (modo depuración)
-  -h, --help           Mostrar esta ayuda
-
-Ejemplos:
-  natl listar todos los archivos incluyendo ocultos
-  natl buscar archivos pdf en el directorio actual
-  natl --model llama3.2 mostrar procesos que más memoria usan
-EOF
+DEFAULT_CONFIG = {
+    "model": DEFAULT_MODEL,
+    "ollama_url": DEFAULT_OLLAMA_URL,
+    "prompt_suffix": "",
+    "explain_default": False,
 }
 
-# Parsea argumentos
-args=()
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -m|--model) MODEL="$2"; shift 2 ;;
-        -e|--explain) EXPLAIN=true; shift ;;
-        -h|--help) usage; exit 0 ;;
-        -*) echo "Opción desconocida: $1" >&2; exit 1 ;;
-        *) args+=("$1"); shift ;;
-    esac
-done
 
-query="${args[*]}"
-if [[ -z "$query" ]]; then
-    echo "Uso: natl <texto en lenguaje natural>" >&2
-    exit 1
-fi
+def load_config() -> dict:
+    if not os.path.isfile(CONFIG_FILE):
+        return DEFAULT_CONFIG.copy()
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return {**DEFAULT_CONFIG, **data}
+    except (json.JSONDecodeError, OSError):
+        return DEFAULT_CONFIG.copy()
 
-# Construir prompt (sustitución segura de {user_request})
-if [[ -f "$PROMPT_FILE" ]]; then
-    prompt=$(<"$PROMPT_FILE")
-    prompt="${prompt//\{user_request\}/$query}"
-else
-    prompt="Translate the user request to a single Linux shell command. Return ONLY the command. No explanations. Request: $query"
-fi
 
-if [[ "$EXPLAIN" == true ]]; then
-    prompt="${prompt}
+def save_config(cfg: dict) -> None:
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
 
-If helpful, add one short line of explanation after the command, prefixed with # "
-fi
 
-# Llamar a Ollama
-response=$(curl -s --max-time 30 "${OLLAMA_URL}/api/generate" \
-    -d "{
-        \"model\": \"${MODEL}\",
-        \"prompt\": $(jq -Rs . <<< "$prompt"),
-        \"stream\": false
-    }") || {
-    echo "Error: no se pudo conectar con Ollama en ${OLLAMA_URL}" >&2
-    exit 1
-}
+def fetch_ollama_models(base_url: str) -> list[str]:
+    try:
+        req = urllib.request.Request(
+            f"{base_url.rstrip('/')}/api/tags",
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [m.get("name", "").split(":")[0] for m in data.get("models", [])]
+    except Exception:
+        return []
 
-cmd=$(echo "$response" | jq -r '.response // empty')
-if [[ -z "$cmd" ]]; then
-    echo "Error: respuesta vacía de Ollama" >&2
-    echo "$response" | jq -r '.error // .' >&2
-    exit 1
-fi
 
-# Extraer solo la primera línea (comando) y quitar bloques de código markdown
-cmd=$(echo "$cmd" | head -n1 | sed -e 's/^[[:space:]]*```[a-z]*//' -e 's/```[[:space:]]*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+def run_config_menu() -> None:
+    cfg = load_config()
+    while True:
+        print("\n--- natl: configuración ---")
+        print("1) Modelo Ollama      →", cfg["model"])
+        print("2) URL de Ollama     →", cfg["ollama_url"])
+        suf = cfg["prompt_suffix"] or "(ninguna)"
+        print("3) Instrucciones extra al prompt →", suf[:50] + ("..." if len(suf) > 50 else ""))
+        print("4) Explicación por defecto      →", "sí" if cfg["explain_default"] else "no")
+        print("5) Listar modelos disponibles (Ollama)")
+        print("6) Ver configuración completa")
+        print("7) Restaurar valores por defecto")
+        print("0) Salir")
+        try:
+            op = input("\nOpción [0]: ").strip() or "0"
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
 
-# Validación de comandos peligrosos
-for pat in "${DANGEROUS_PATTERNS[@]}"; do
-    if echo "$cmd" | grep -qE "$pat"; then
-        echo "Seguridad: comando rechazado por política (patrón: $pat)" >&2
-        exit 1
-    fi
-done
+        if op == "0":
+            break
+        if op == "1":
+            val = input(f"Modelo [{cfg['model']}]: ").strip()
+            if val:
+                cfg["model"] = val
+                save_config(cfg)
+                print("Guardado.")
+        elif op == "2":
+            val = input(f"URL de Ollama [{cfg['ollama_url']}]: ").strip()
+            if val:
+                cfg["ollama_url"] = val.rstrip("/")
+                save_config(cfg)
+                print("Guardado.")
+        elif op == "3":
+            print("Instrucciones que se añaden al final del prompt (línea vacía para borrar):")
+            val = input("> ").strip()
+            cfg["prompt_suffix"] = val
+            save_config(cfg)
+            print("Guardado.")
+        elif op == "4":
+            cfg["explain_default"] = not cfg["explain_default"]
+            save_config(cfg)
+            print("Explicación por defecto:", "sí" if cfg["explain_default"] else "no")
+        elif op == "5":
+            models = fetch_ollama_models(cfg["ollama_url"])
+            if models:
+                print("Modelos disponibles:", ", ".join(models))
+            else:
+                print("No se pudo obtener la lista (¿Ollama en marcha?).")
+        elif op == "6":
+            print(json.dumps(cfg, indent=2, ensure_ascii=False))
+        elif op == "7":
+            cfg = DEFAULT_CONFIG.copy()
+            save_config(cfg)
+            print("Restaurado.")
+        else:
+            print("Opción no válida.")
+    print("Configuración guardada en:", CONFIG_FILE)
 
-echo "$cmd"
+
+def get_prompt(query: str, prompt_path: str, suffix: str = "") -> str:
+    if os.path.isfile(prompt_path):
+        with open(prompt_path, encoding="utf-8") as f:
+            template = f.read()
+        out = template.replace("{user_request}", query)
+    else:
+        out = (
+            "Translate the user request to a single Linux shell command. "
+            "Return ONLY the command. No explanations. Request: " + query
+        )
+    if suffix:
+        out = out.rstrip() + "\n\n" + suffix.strip()
+    return out
+
+
+def call_ollama(url: str, model: str, prompt: str, timeout: int = 30) -> str:
+    body = json.dumps(
+        {"model": model, "prompt": prompt, "stream": False},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{url.rstrip('/')}/api/generate",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        print(f"Error: no se pudo conectar con Ollama en {url}", file=sys.stderr)
+        if hasattr(e, "reason"):
+            print(str(e.reason), file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print("Error: respuesta inválida de Ollama", file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+    response = data.get("response") or data.get("error") or ""
+    if not response and "error" in data:
+        print(f"Error: {data['error']}", file=sys.stderr)
+        sys.exit(1)
+    if not response:
+        print("Error: respuesta vacía de Ollama", file=sys.stderr)
+        sys.exit(1)
+    return response
+
+
+def clean_command(raw: str) -> str:
+    first_line = raw.strip().split("\n")[0].strip()
+    first_line = re.sub(r"^\s*```[\w]*", "", first_line)
+    first_line = re.sub(r"```\s*$", "", first_line)
+    return first_line.strip()
+
+
+def is_dangerous(cmd: str) -> bool:
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, cmd):
+            return True
+    return False
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Traduce lenguaje natural a un comando de Linux (Ollama). Sin argumentos: menú de configuración."
+    )
+    parser.add_argument(
+        "-m", "--model",
+        default=None,
+        help="Modelo Ollama (sustituye el de la configuración)",
+    )
+    parser.add_argument(
+        "-e", "--explain",
+        action="store_true",
+        default=None,
+        help="Pedir breve explicación al LLM (depuración)",
+    )
+    parser.add_argument(
+        "query",
+        nargs="*",
+        help="Texto en lenguaje natural",
+    )
+    args = parser.parse_args()
+
+    query = " ".join(args.query).strip()
+    if not query:
+        run_config_menu()
+        sys.exit(0)
+
+    cfg = load_config()
+    model = args.model or os.environ.get("NATL_MODEL") or cfg["model"]
+    ollama_url = os.environ.get("OLLAMA_URL") or cfg["ollama_url"]
+    explain = args.explain or cfg["explain_default"]
+    prompt_suffix = cfg.get("prompt_suffix", "")
+
+    prompt = get_prompt(query, PROMPT_FILE, prompt_suffix)
+    if explain:
+        prompt += "\n\nIf helpful, add one short line of explanation after the command, prefixed with # "
+
+    raw = call_ollama(ollama_url, model, prompt)
+    cmd = clean_command(raw)
+
+    if is_dangerous(cmd):
+        print("Seguridad: comando rechazado por política.", file=sys.stderr)
+        sys.exit(1)
+
+    print(cmd)
+
+
+if __name__ == "__main__":
+    main()
