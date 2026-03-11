@@ -306,7 +306,9 @@ def run_config_menu() -> None:
         print("8) Usar RAG (man pages)        →", "sí" if cfg.get("use_rag") else "no")
         print("9) Modelo de embeddings       →", cfg.get("embedding_model", DEFAULT_CONFIG["embedding_model"]))
         max_p = cfg.get("man_max_pages", DEFAULT_CONFIG["man_max_pages"])
-        print("10) Máx. páginas al indexar  →", max_p if max_p else "todas")
+        total_man = len(list_man_pages(section=1))
+        max_str = str(max_p) if max_p else "todas"
+        print(f"10) Máx. páginas al indexar  → {max_str} (de {total_man} en total)")
         print("11) Construir índice de man pages (RAG)")
         print("0) Salir")
         try:
