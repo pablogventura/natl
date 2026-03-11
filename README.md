@@ -47,23 +47,20 @@ Removes `~/bin/natl` and the integration block from `.bashrc` and `.zshrc`. Use 
 
 ### Building the .deb package
 
-Install build dependencies (Debian/Ubuntu):
+Install build dependencies (Debian/Ubuntu), then run the helper script:
 
 ```bash
 sudo apt install build-essential debhelper
+./build-deb.sh
 ```
 
-From the project root:
-
-```bash
-dpkg-buildpackage -us -uc -b
-```
-
-The `.deb` will be in the parent directory. Install with:
+The script checks for `dpkg-buildpackage`, runs the build, and prints the path to the `.deb` (in the parent directory). Install with:
 
 ```bash
 sudo dpkg -i ../natl_0.1.0-1_all.deb
 ```
+
+Alternatively, from the project root: `dpkg-buildpackage -us -uc -b`.
 
 The package installs `/usr/bin/natl` (symlink to `/usr/share/natl/natl`), prompt and shell integration under `/usr/share/natl/`. After install, add to your shell rc:
 
@@ -154,6 +151,7 @@ natl/
 ├── README.md
 ├── prompt.txt        # LLM prompt template
 ├── future.md         # Future ideas (e.g. dpkg triggers)
+├── build-deb.sh      # Build .deb (checks deps, runs dpkg-buildpackage)
 ├── debian/           # Debian package build
 │   ├── control
 │   ├── changelog
