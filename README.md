@@ -62,6 +62,14 @@ sudo dpkg -i ../natl_0.1.0-1_all.deb
 
 Alternatively, from the project root: `dpkg-buildpackage -us -uc -b`.
 
+**Releases:** Pushing a tag `v*` (e.g. `v0.1.0`) triggers a GitHub Action that builds the `.deb` and publishes it as a release asset. After updating `VERSION` and committing:
+
+```bash
+git tag -a v0.1.0 -m "Release 0.1.0"
+git push origin main
+git push origin v0.1.0
+```
+
 The package installs `/usr/bin/natl` (symlink to `/usr/share/natl/natl`), prompt and shell integration under `/usr/share/natl/`. After install, add to your shell rc:
 
 ```bash
