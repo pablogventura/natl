@@ -55,6 +55,7 @@ DEFAULT_CONFIG = {
     "embedding_model": "nomic-embed-text",
     "man_index_path": DEFAULT_MAN_INDEX_PATH,
     "man_top_k": 5,
+    "man_max_pages": 500,  # max man pages to index (None = all); limits build time and index size
 }
 
 
@@ -304,7 +305,9 @@ def run_config_menu() -> None:
         print("7) Restaurar valores por defecto")
         print("8) Usar RAG (man pages)        →", "sí" if cfg.get("use_rag") else "no")
         print("9) Modelo de embeddings       →", cfg.get("embedding_model", DEFAULT_CONFIG["embedding_model"]))
-        print("10) Construir índice de man pages (RAG)")
+        max_p = cfg.get("man_max_pages", DEFAULT_CONFIG["man_max_pages"])
+        print("10) Máx. páginas al indexar  →", max_p if max_p else "todas")
+        print("11) Construir índice de man pages (RAG)")
         print("0) Salir")
         try:
             op = input("\nOpción [0]: ").strip() or "0"
@@ -360,13 +363,29 @@ def run_config_menu() -> None:
                 save_config(cfg)
                 print("Guardado.")
         elif op == "10":
+            default_mp = cfg.get("man_max_pages", DEFAULT_CONFIG["man_max_pages"])
+            val = input(f"Máx. páginas al indexar (0 = todas) [{default_mp}]: ").strip()
+            if val != "":
+                try:
+                    n = int(val)
+                    cfg["man_max_pages"] = n if n != 0 else 0
+                    save_config(cfg)
+                    print("Guardado.")
+                except ValueError:
+                    print("Indica un número.", file=sys.stderr)
+        elif op == "11":
             if not check_ollama_reachable(cfg["ollama_url"]):
                 print("Ollama no está disponible. Inicia el servidor (ollama serve).", file=sys.stderr)
             else:
                 emb = cfg.get("embedding_model") or DEFAULT_CONFIG["embedding_model"]
                 path = os.path.expanduser(cfg.get("man_index_path") or DEFAULT_MAN_INDEX_PATH)
-                print("Construyendo índice (sección 1, máx. 500 páginas) ...", file=sys.stderr)
-                build_man_index(cfg["ollama_url"], emb, path, section=1, max_pages=500)
+                max_p = cfg.get("man_max_pages", DEFAULT_CONFIG["man_max_pages"])
+                total_man = len(list_man_pages(section=1))
+                if max_p:
+                    print(f"Construyendo índice (sección 1, máx. {max_p} de {total_man} en total) ...", file=sys.stderr)
+                else:
+                    print(f"Construyendo índice (sección 1, {total_man} páginas en total) ...", file=sys.stderr)
+                build_man_index(cfg["ollama_url"], emb, path, section=1, max_pages=max_p or None)
         else:
             print("Opción no válida.")
     print("Configuración guardada en:", CONFIG_FILE)
@@ -468,11 +487,24 @@ def main() -> None:
         help="Build embedding index from man pages (for RAG) and exit",
     )
     parser.add_argument(
+        "--man-max-pages",
+        type=int,
+        default=None,
+        metavar="N",
+        help="When building index: max man pages to index (default: from config, or 500). Use 0 for no limit.",
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show model, RAG usage, full prompt, and LLM response on stderr",
+    )
+    parser.add_argument(
         "query",
         nargs="*",
         help="Texto en lenguaje natural",
     )
     args = parser.parse_args()
+    verbose = args.verbose
 
     cfg = load_config()
     ollama_url = os.environ.get("OLLAMA_URL") or cfg["ollama_url"]
@@ -482,8 +514,15 @@ def main() -> None:
             warn_ollama_unreachable(ollama_url)
         emb_model = cfg.get("embedding_model") or DEFAULT_CONFIG["embedding_model"]
         index_path = os.path.expanduser(cfg.get("man_index_path") or DEFAULT_MAN_INDEX_PATH)
-        print("Building man page index (section 1, max 500 pages) ...", file=sys.stderr)
-        build_man_index(ollama_url, emb_model, index_path, section=1, max_pages=500)
+        max_pages = args.man_max_pages if args.man_max_pages is not None else cfg.get("man_max_pages", DEFAULT_CONFIG["man_max_pages"])
+        if max_pages == 0:
+            max_pages = None
+        total_man = len(list_man_pages(section=1))
+        if max_pages is not None:
+            print(f"Building man page index (section 1, max {max_pages} of {total_man} total) ...", file=sys.stderr)
+        else:
+            print(f"Building man page index (section 1, {total_man} pages total) ...", file=sys.stderr)
+        build_man_index(ollama_url, emb_model, index_path, section=1, max_pages=max_pages)
         sys.exit(0)
 
     query = " ".join(args.query).strip()
@@ -496,6 +535,8 @@ def main() -> None:
     prompt_suffix = cfg.get("prompt_suffix", "")
 
     man_docs_block = ""
+    rag_used = False
+    rag_sources: list[str] = []
     if cfg.get("use_rag"):
         index_path = os.path.expanduser(cfg.get("man_index_path") or DEFAULT_MAN_INDEX_PATH)
         index = load_man_index(index_path)
@@ -509,11 +550,23 @@ def main() -> None:
                 )
                 hits = search_man_index(index, query_emb, top_k)
                 if hits:
+                    rag_used = True
+                    rag_sources = [c.get("source", "") for c in hits]
                     parts = [f"[{c.get('source', '')}]\n{c.get('text', '')}" for c in hits]
                     man_docs_block = "\n\n---\n\n".join(parts)
                     man_docs_block = "\nRelevant documentation (use only to pick command and flags):\n\n" + man_docs_block + "\n"
             except Exception:
                 pass
+
+    if verbose:
+        print("--- natl (verbose) ---", file=sys.stderr)
+        print(f"Ollama URL: {ollama_url}", file=sys.stderr)
+        print(f"Model: {model}", file=sys.stderr)
+        print(f"RAG (man pages): {'yes' if rag_used else 'no'}", file=sys.stderr)
+        if rag_used:
+            print(f"  Embedding model: {index.get('embedding_model', '')}", file=sys.stderr)
+            print(f"  Chunks injected: {len(rag_sources)} → {', '.join(rag_sources)}", file=sys.stderr)
+        print("", file=sys.stderr)
 
     prompt = get_prompt(query, PROMPT_FILE, prompt_suffix, man_docs=man_docs_block)
     if explain:
@@ -525,8 +578,24 @@ def main() -> None:
     raw = call_ollama(ollama_url, model, prompt)
     cmd = clean_command(raw)
 
+    if verbose:
+        print("--- Prompt sent to LLM ---", file=sys.stderr)
+        print(prompt, file=sys.stderr)
+        print("", file=sys.stderr)
+        print("--- Raw LLM response ---", file=sys.stderr)
+        print(raw, file=sys.stderr)
+        print("", file=sys.stderr)
+
     if is_dangerous(cmd):
         cmd = "# WARNING: potentially destructive - review before running\n" + cmd
+        if verbose:
+            print("(Warning comment prepended: command matched dangerous pattern)", file=sys.stderr)
+
+    if verbose:
+        print("--- Final command (stdout) ---", file=sys.stderr)
+        print(cmd, file=sys.stderr)
+        print("---", file=sys.stderr)
+
     print(cmd)
 
 

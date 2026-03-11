@@ -87,6 +87,7 @@ Running **`natl`** with no arguments opens an interactive configuration menu:
 - **Restore defaults** — Reset all options
 - **Use RAG (man pages)** — Toggle retrieval-augmented generation: inject relevant man page snippets into the prompt (requires an index)
 - **Embedding model** — Ollama model for embeddings (e.g. `nomic-embed-text`); used when building the index and when searching
+- **Max pages to index** — When building the man index, cap at this many pages (default 500) to limit build time and index size; set to 0 for no limit
 - **Build man page index** — Build the embedding index from man section 1 (user commands); run once after enabling RAG, or use `natl --build-man-index`
 
 Settings are saved to `~/.config/natl/config.json` and apply to all runs, including the Ctrl+G widget.
@@ -99,7 +100,7 @@ To improve command accuracy, you can index man pages with embeddings and inject 
 2. Build the index: `natl --build-man-index` (or use option **10** in the config menu). This scans man section 1, chunks pages, and embeds them via Ollama. The index is saved to `~/.local/share/natl/man_index.json` (or the path set in config).
 3. In the config menu, enable **8) Usar RAG (man pages)**. From then on, each query will retrieve the top-k most similar chunks and add them to the prompt.
 
-Config keys: `use_rag`, `embedding_model`, `man_index_path`, `man_top_k` (default 5).
+Config keys: `use_rag`, `embedding_model`, `man_index_path`, `man_top_k` (default 5), `man_max_pages` (default 500; 0 = index all). You can override the limit when building with `natl --build-man-index --man-max-pages 0` to index every man page.
 
 ### In the prompt (recommended)
 
@@ -125,6 +126,8 @@ find . -name "*.pdf"
 
 - **`-m, --model MODEL`** — Ollama model (overrides config).
 - **`-e, --explain`** — Ask the model for a short explanation (debugging).
+- **`-v, --verbose`** — Print to stderr: model, Ollama URL, RAG usage (and injected man chunks), full prompt sent to the LLM, raw response, and final command. Useful for debugging.
+- **`--man-max-pages N`** — When using `--build-man-index`, index at most N man pages (0 = no limit). Default comes from config (`man_max_pages`, default 500).
 - **`-h, --help`** — Show help.
 
 Environment variables (override the config file):
@@ -133,7 +136,7 @@ Environment variables (override the config file):
 - **`NATL_MODEL`** — Model to use.
 - **`OLLAMA_URL`** — Ollama API URL.
 
-When RAG is enabled, the config file may also contain: **`use_rag`**, **`embedding_model`** (e.g. `nomic-embed-text`), **`man_index_path`**, **`man_top_k`**.
+When RAG is enabled, the config file may also contain: **`use_rag`**, **`embedding_model`** (e.g. `nomic-embed-text`), **`man_index_path`**, **`man_top_k`**, **`man_max_pages`** (max pages when building the index; 0 = all).
 
 ## Security
 
