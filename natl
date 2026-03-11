@@ -24,6 +24,8 @@ CONFIG_DIR = os.path.join(
 )
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
+VERSION_FILE = os.path.join(SCRIPT_DIR, "VERSION")
+
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_MODEL = "llama3.2"
 
@@ -43,6 +45,17 @@ DEFAULT_CONFIG = {
     "prompt_suffix": "",
     "explain_default": False,
 }
+
+
+def get_version() -> str:
+    """Read version from VERSION file next to the script, or fallback."""
+    if os.path.isfile(VERSION_FILE):
+        try:
+            with open(VERSION_FILE, encoding="utf-8") as f:
+                return f.read().strip() or "0.1.0"
+        except OSError:
+            pass
+    return "0.1.0"
 
 
 def load_config() -> dict:
@@ -240,6 +253,12 @@ def main() -> None:
         action="store_true",
         default=None,
         help="Pedir breve explicación al LLM (depuración)",
+    )
+    parser.add_argument(
+        "-V", "--version",
+        action="version",
+        version="%(prog)s " + get_version(),
+        help="Mostrar versión y salir",
     )
     parser.add_argument(
         "query",

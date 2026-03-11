@@ -1,0 +1,5 @@
+natl usr/share/natl/
+VERSION usr/share/natl/
+prompt.txt usr/share/natl/
+shell/bash_integration.sh usr/share/natl/shell/
+shell/zsh_integration.sh usr/share/natl/shell/

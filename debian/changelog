@@ -1,0 +1,7 @@
+natl (0.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Natural language to shell command via Ollama.
+  * Interactive configuration menu, bash/zsh integration.
+
+ -- Pablo Ventura <pablogventura@gmail.com>  Wed, 11 Mar 2025 12:00:00 +0000

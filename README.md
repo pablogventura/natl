@@ -45,6 +45,33 @@ Removes `~/bin/natl` and the integration block from `.bashrc` and `.zshrc`. Use 
    source /path/to/natl/shell/bash_integration.sh   # or zsh_integration.sh for zsh
    ```
 
+### Building the .deb package
+
+Install build dependencies (Debian/Ubuntu):
+
+```bash
+sudo apt install build-essential debhelper
+```
+
+From the project root:
+
+```bash
+dpkg-buildpackage -us -uc -b
+```
+
+The `.deb` will be in the parent directory. Install with:
+
+```bash
+sudo dpkg -i ../natl_0.1.0-1_all.deb
+```
+
+The package installs `/usr/bin/natl` (symlink to `/usr/share/natl/natl`), prompt and shell integration under `/usr/share/natl/`. After install, add to your shell rc:
+
+```bash
+export NATL_BIN=/usr/bin/natl
+source /usr/share/natl/shell/bash_integration.sh   # or zsh_integration.sh
+```
+
 ## Usage
 
 ### Configuration menu
@@ -102,10 +129,22 @@ The script blocks commands that match dangerous patterns (e.g. `rm -rf /`, `mkfs
 ```
 natl/
 ├── natl              # Main script (Python 3)
+├── VERSION           # Single source for version (used by script and .deb build)
+├── LICENSE           # MIT, (c) Pablo Ventura
 ├── install.sh        # Install to ~/bin and add shell integration
 ├── uninstall.sh      # Uninstall
 ├── README.md
 ├── prompt.txt        # LLM prompt template
+├── future.md         # Future ideas (e.g. dpkg triggers)
+├── debian/           # Debian package build
+│   ├── control
+│   ├── changelog
+│   ├── rules
+│   ├── compat
+│   ├── copyright
+│   ├── postinst
+│   ├── natl.install
+│   └── natl.links
 └── shell/
     ├── bash_integration.sh
     └── zsh_integration.sh
@@ -119,6 +158,10 @@ natl/
 | find all pdf files              | `find . -name "*.pdf"`         |
 | processes using most memory     | `ps aux --sort=-%mem \| head`  |
 | count lines in python files     | `wc -l *.py`                   |
+
+## Version
+
+The project version is defined in a single file: **`VERSION`** (e.g. `0.1.0`). The script uses it for `natl --version`; the Debian package build reads it to set the package version. When releasing, update `VERSION` and then run `dpkg-buildpackage`; `debian/changelog` will be updated automatically at build time.
 
 ## Success criteria
 

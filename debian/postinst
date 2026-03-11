@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+# Post-install message
+if [ "$1" = "configure" ]; then
+    echo "natl installed. To use in your shell:"
+    echo "  export NATL_BIN=/usr/bin/natl"
+    echo "  source /usr/share/natl/shell/bash_integration.sh   # bash"
+    echo "  source /usr/share/natl/shell/zsh_integration.sh      # zsh"
+    echo "Run 'natl' with no arguments for the configuration menu."
+fi
+exit 0

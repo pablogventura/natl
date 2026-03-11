@@ -1,0 +1,18 @@
+Source: natl
+Section: utils
+Priority: optional
+Maintainer: Pablo Ventura <pablogventura@gmail.com>
+Build-Depends: debhelper (>= 10)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: natl
+Architecture: all
+Depends: python3 (>= 3.8), ${misc:Depends}
+Description: Natural language to Linux shell commands
+ Translates natural language into a single Linux shell command using
+ a local LLM (Ollama). The command is printed to stdout so it can be
+ inserted into the prompt without running it (e.g. via Ctrl+G in bash).
+ .
+ Requires Ollama running locally. Supports configuration menu when
+ run with no arguments; config is stored in ~/.config/natl/config.json.

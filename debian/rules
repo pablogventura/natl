@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+# Sync package version from VERSION file (single source of truth)
+override_dh_auto_configure:
+	@if [ -f VERSION ]; then \
+		VER=$$(cat VERSION); \
+		sed -i "1s/[0-9][0-9.]*-[0-9]*/$$VER-1/" debian/changelog; \
+	fi
