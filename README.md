@@ -1,115 +1,128 @@
 # natl — Natural Language to Linux
 
-Herramienta de consola que traduce instrucciones en lenguaje natural a **un comando de shell** usando un LLM local (Ollama). El comando se **inserta en la línea del prompt** sin ejecutarse; puedes editarlo o pulsar Enter para ejecutarlo.
+A console tool that turns **natural language** into a **single Linux shell command** using a local LLM (Ollama). The command is **inserted into your prompt** without being run; you can edit it or press Enter to execute.
 
-## Requisitos
+## Requirements
 
-- **Bash** (o Zsh)
-- **Ollama** en ejecución con al menos un modelo (p. ej. `llama3.2`)
-- **curl**, **jq**
+- **Python 3** (standard library only, no pip)
+- **Bash** or **Zsh** (for prompt integration)
+- **Ollama** running with at least one model (e.g. `llama3.2`)
 
-## Instalación
+## Installation
 
-### Con el script de instalación (recomendado)
+### Using the install script (recommended)
 
-Desde el directorio del proyecto:
+From the project directory:
 
 ```bash
 chmod +x install.sh uninstall.sh
 ./install.sh
 ```
 
-Opciones de `install.sh`:
-- **`--bash`** — Integración solo en `~/.bashrc`
-- **`--zsh`** — Integración solo en `~/.zshrc`
-- **`--all`** — En ambos (por defecto)
-- **`--no-shell`** — Solo instalar el binario en `~/bin`, sin tocar la configuración del shell
+`install.sh` options:
+- **`--bash`** — Add integration only to `~/.bashrc`
+- **`--zsh`** — Add integration only to `~/.zshrc`
+- **`--all`** — Add to both (default)
+- **`--no-shell`** — Only install the binary to `~/bin`; do not modify shell config
 
-Luego ejecuta `source ~/.bashrc` o `source ~/.zshrc`.
+Then run `source ~/.bashrc` or `source ~/.zshrc` (or open a new terminal).
 
-### Desinstalación
+### Uninstall
 
 ```bash
 ./uninstall.sh
 ```
 
-Quita `~/bin/natl` y elimina el bloque de integración de `.bashrc` y `.zshrc`. Con `--no-shell` solo se elimina el binario.
+Removes `~/bin/natl` and the integration block from `.bashrc` and `.zshrc`. Use `--no-shell` to only remove the binary.
 
-### Instalación manual
+### Manual installation
 
-1. Haz ejecutable el script: `chmod +x natl`
-2. Enlaza en tu PATH: `ln -s /ruta/a/natl/natl ~/bin/natl`
-3. Añade a `~/.bashrc` o `~/.zshrc`:
+1. Make the script executable: `chmod +x natl`
+2. Link it into your PATH: `ln -s /path/to/natl/natl ~/bin/natl`
+3. Add to `~/.bashrc` or `~/.zshrc`:
    ```bash
    export NATL_BIN=~/bin/natl
-   source /ruta/a/natl/shell/bash_integration.sh   # o zsh_integration.sh
+   source /path/to/natl/shell/bash_integration.sh   # or zsh_integration.sh for zsh
    ```
 
-## Uso
+## Usage
 
-### En el prompt (recomendado)
+### Configuration menu
 
-1. Escribe en lenguaje natural, con o sin la palabra `natl`:
-   - `natl listar todos los archivos incluyendo ocultos`
-   - `listar todos los archivos incluyendo ocultos`
+Running **`natl`** with no arguments opens an interactive configuration menu:
 
-2. Pulsa **Ctrl+G**. La línea se sustituye por el comando, por ejemplo:
+- **Ollama model** — Default model (e.g. `llama3.2`, `phi3`)
+- **Ollama URL** — API base URL (default `http://localhost:11434`)
+- **Extra prompt instructions** — Text appended to the prompt (e.g. “Prefer short commands”)
+- **Explanation by default** — Toggle whether the model adds a brief explanation
+- **List available models** — Show models reported by your Ollama instance
+- **View full config** — Show current config JSON
+- **Restore defaults** — Reset all options
+
+Settings are saved to `~/.config/natl/config.json` and apply to all runs, including the Ctrl+G widget.
+
+### In the prompt (recommended)
+
+1. Type in natural language, with or without the word `natl`:
+   - `natl list all files including hidden`
+   - `list all files including hidden`
+
+2. Press **Ctrl+G**. The line is replaced by the command, e.g.:
    - `ls -a`
 
-3. Edita si quieres y pulsa **Enter** para ejecutar.
+3. Edit if needed and press **Enter** to run.
 
-### Como comando
+### As a command
 
-Si ejecutas `natl` como comando (sin la integración en la línea), imprime el comando en la salida estándar:
+If you run `natl` as a normal command, it prints the generated command to stdout:
 
 ```bash
-$ natl buscar todos los archivos pdf
+$ natl find all pdf files
 find . -name "*.pdf"
 ```
 
-## Opciones del script
+## Script options
 
-- **`-m, --model MODELO`** — Modelo de Ollama (por defecto: `llama3.2`).
-- **`-e, --explain`** — Pedir al modelo una breve explicación (útil para depuración).
-- **`-h, --help`** — Ayuda.
+- **`-m, --model MODEL`** — Ollama model (overrides config).
+- **`-e, --explain`** — Ask the model for a short explanation (debugging).
+- **`-h, --help`** — Show help.
 
-Variables de entorno:
+Environment variables (override the config file):
 
-- **`NATL_BIN`** — Ruta al script `natl` (usado por las integraciones).
-- **`NATL_DIR`** — Directorio del proyecto (para localizar `prompt.txt`).
-- **`NATL_MODEL`** — Modelo por defecto.
-- **`OLLAMA_URL`** — URL de Ollama (por defecto: `http://localhost:11434`).
+- **`NATL_BIN`** — Path to the `natl` script (used by shell integrations).
+- **`NATL_MODEL`** — Model to use.
+- **`OLLAMA_URL`** — Ollama API URL.
 
-## Seguridad
+## Security
 
-El script rechaza comandos que coinciden con patrones considerados peligrosos (p. ej. `rm -rf /`, `mkfs`, `dd` sobre dispositivos, fork bombs). La lista está en el script; puedes revisarla y ampliarla.
+The script blocks commands that match dangerous patterns (e.g. `rm -rf /`, `mkfs`, `dd` to devices, fork bombs). The list is in the script; you can review and extend it.
 
-## Estructura del proyecto
+## Project layout
 
 ```
 natl/
-├── natl              # Script principal
-├── install.sh        # Instalación en ~/bin e integración shell
-├── uninstall.sh      # Desinstalación
+├── natl              # Main script (Python 3)
+├── install.sh        # Install to ~/bin and add shell integration
+├── uninstall.sh      # Uninstall
 ├── README.md
-├── prompt.txt        # Plantilla del prompt al LLM
+├── prompt.txt        # LLM prompt template
 └── shell/
     ├── bash_integration.sh
     └── zsh_integration.sh
 ```
 
-## Ejemplos
+## Examples
 
-| Entrada (lenguaje natural)        | Comando generado                    |
-|-----------------------------------|-------------------------------------|
-| listar todos los archivos ocultos | `ls -a`                             |
-| buscar todos los archivos pdf     | `find . -name "*.pdf"`              |
-| procesos que más memoria usan     | `ps aux --sort=-%mem \| head`       |
-| contar líneas en archivos python  | `wc -l *.py`                        |
+| Natural language input           | Generated command              |
+|---------------------------------|--------------------------------|
+| list all files including hidden | `ls -a`                        |
+| find all pdf files              | `find . -name "*.pdf"`         |
+| processes using most memory     | `ps aux --sort=-%mem \| head`  |
+| count lines in python files     | `wc -l *.py`                   |
 
-## Criterios de éxito
+## Success criteria
 
-- Traduce lenguaje natural a comandos útiles.
-- Inserta el comando en el prompt (con Ctrl+G) sin ejecutarlo.
-- No ejecuta automáticamente.
-- Rápido con modelo local (objetivo &lt;1 s según modelo y hardware).
+- Translates natural language into useful commands.
+- Inserts the command into the prompt (via Ctrl+G) without executing it.
+- Does not run commands automatically.
+- Fast with a local model (target &lt;1 s depending on model and hardware).
