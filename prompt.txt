@@ -1,0 +1,11 @@
+Translate the user request to a single Linux shell command.
+
+Rules:
+- Return ONLY the command
+- No explanations
+- Assume GNU/Linux environment
+- Prefer standard POSIX utilities
+- Never generate destructive commands (rm -rf, mkfs, dd, etc.)
+
+Request:
+{user_request}

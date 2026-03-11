@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+#
+# natl - Natural Language to Linux
+# Traduce instrucciones en lenguaje natural a comandos de shell (Ollama).
+# El comando se inserta en la línea del prompt sin ejecutarse.
+#
+
+set -e
+
+# Directorio del script (resuelve symlinks para que funcione desde ~/bin)
+_script_path="${BASH_SOURCE[0]}"
+[[ -L "$_script_path" ]] && _script_path=$(readlink -f "$_script_path")
+NATL_DIR="${NATL_DIR:-$(cd "$(dirname "$_script_path")" && pwd)}"
+PROMPT_FILE="${NATL_DIR}/prompt.txt"
+OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+MODEL="${NATL_MODEL:-llama3.2}"
+EXPLAIN=false
+
+# Comandos o patrones considerados peligrosos (no se ejecutan)
+DANGEROUS_PATTERNS=(
+    'rm\s+-rf\s+/'
+    'rm\s+-rf\s+/\s'
+    'mkfs\.'
+    '\bdd\s+if=.*of=/dev'
+    ':(){.*|:&};:'  # fork bomb
+    '>\s*/dev/sd'
+    'chmod\s+-R\s+777\s+/'
+)
+
+usage() {
+    cat <<EOF
+Uso: natl [OPCIONES] <texto en lenguaje natural>
+
+Traduce la petición a un único comando de Linux e imprime el comando
+(para insertarlo en el prompt con la integración de shell).
+
+Opciones:
+  -m, --model MODELO   Modelo Ollama (default: ${MODEL})
+  -e, --explain        Pedir al LLM que incluya breve explicación (modo depuración)
+  -h, --help           Mostrar esta ayuda
+
+Ejemplos:
+  natl listar todos los archivos incluyendo ocultos
+  natl buscar archivos pdf en el directorio actual
+  natl --model llama3.2 mostrar procesos que más memoria usan
+EOF
+}
+
+# Parsea argumentos
+args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -m|--model) MODEL="$2"; shift 2 ;;
+        -e|--explain) EXPLAIN=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        -*) echo "Opción desconocida: $1" >&2; exit 1 ;;
+        *) args+=("$1"); shift ;;
+    esac
+done
+
+query="${args[*]}"
+if [[ -z "$query" ]]; then
+    echo "Uso: natl <texto en lenguaje natural>" >&2
+    exit 1
+fi
+
+# Construir prompt (sustitución segura de {user_request})
+if [[ -f "$PROMPT_FILE" ]]; then
+    prompt=$(<"$PROMPT_FILE")
+    prompt="${prompt//\{user_request\}/$query}"
+else
+    prompt="Translate the user request to a single Linux shell command. Return ONLY the command. No explanations. Request: $query"
+fi
+
+if [[ "$EXPLAIN" == true ]]; then
+    prompt="${prompt}
+
+If helpful, add one short line of explanation after the command, prefixed with # "
+fi
+
+# Llamar a Ollama
+response=$(curl -s --max-time 30 "${OLLAMA_URL}/api/generate" \
+    -d "{
+        \"model\": \"${MODEL}\",
+        \"prompt\": $(jq -Rs . <<< "$prompt"),
+        \"stream\": false
+    }") || {
+    echo "Error: no se pudo conectar con Ollama en ${OLLAMA_URL}" >&2
+    exit 1
+}
+
+cmd=$(echo "$response" | jq -r '.response // empty')
+if [[ -z "$cmd" ]]; then
+    echo "Error: respuesta vacía de Ollama" >&2
+    echo "$response" | jq -r '.error // .' >&2
+    exit 1
+fi
+
+# Extraer solo la primera línea (comando) y quitar bloques de código markdown
+cmd=$(echo "$cmd" | head -n1 | sed -e 's/^[[:space:]]*```[a-z]*//' -e 's/```[[:space:]]*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+# Validación de comandos peligrosos
+for pat in "${DANGEROUS_PATTERNS[@]}"; do
+    if echo "$cmd" | grep -qE "$pat"; then
+        echo "Seguridad: comando rechazado por política (patrón: $pat)" >&2
+        exit 1
+    fi
+done
+
+echo "$cmd"

@@ -1,0 +1,19 @@
+# Copias de seguridad (p. ej. uninstall.sh puede crear .bak)
+*.bak
+*~
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Logs o caché si se añaden en el futuro
+*.log
+.cache/
