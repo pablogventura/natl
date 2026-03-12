@@ -480,12 +480,54 @@ def run_config_menu() -> None:
     print("Configuración guardada en:", CONFIG_FILE)
 
 
+ENRICH_PROMPT = """Restate the following user request in a clear, structured form. The user will use this to get a single Linux shell command.
+
+- If there are multiple intents or steps, list them as short bullet points (•).
+- Use one line or a few lines; be concise.
+- Do NOT output a shell command, only the restated request.
+- Output in the same language as the user.
+
+User request: """
+
+
+def enrich_user_request_with_llm(url: str, model: str, query: str, timeout: int = 15) -> str | None:
+    """Ask the LLM to restate the user request in a structured way. Returns None on failure."""
+    if not query.strip():
+        return None
+    try:
+        prompt = ENRICH_PROMPT + query.strip()
+        response = call_ollama(url, model, prompt, timeout=timeout)
+        text = response.strip()
+        if not text or len(text) < 2:
+            return None
+        first_block = text.split("\n\n")[0].strip()
+        return first_block if first_block else text[:800].strip()
+    except Exception:
+        return None
+
+
+def enrich_user_request(query: str) -> str:
+    """Turn the raw user request into a structured block for the prompt (rule-based fallback)."""
+    raw = " ".join(query.split()).strip()
+    if not raw:
+        return raw
+    clause_re = re.compile(r"\s+and\s+|\s+then\s+|,\s*", re.IGNORECASE)
+    parts = [p.strip() for p in clause_re.split(raw) if p.strip()]
+    if len(parts) <= 1:
+        structured = f"--- User request ---\n\n{raw}\n"
+    else:
+        bullets = "\n".join(f"• {p}" for p in parts)
+        structured = f"--- User request (structured) ---\n\n{bullets}\n\nOriginal: {raw}\n"
+    return structured + "\n--- End of request ---"
+
+
 def get_prompt(
     query: str,
     prompt_path: str,
     suffix: str = "",
     man_docs: str = "",
     help_docs: str = "",
+    request_text: str | None = None,
 ) -> str:
     if os.path.isfile(prompt_path):
         with open(prompt_path, encoding="utf-8") as f:
@@ -495,7 +537,9 @@ def get_prompt(
             template = template.replace("{help_docs}", "\nRelevant command help:\n\n" + help_docs + "\n")
         else:
             template = template.replace("{help_docs}", "")
-        out = template.replace("{user_request}", query)
+        if request_text is None:
+            request_text = enrich_user_request(query)
+        out = template.replace("{user_request}", request_text)
     else:
         out = (
             "Translate the user request to a single Linux shell command. "
@@ -672,12 +716,26 @@ def main() -> None:
             print(f"  Chunks injected: {len(rag_sources)} → {', '.join(rag_sources)}", file=sys.stderr)
         print("", file=sys.stderr)
 
-    prompt = get_prompt(query, PROMPT_FILE, prompt_suffix, man_docs=man_docs_block)
-    if explain:
-        prompt += "\n\nIf helpful, add one short line of explanation after the command, prefixed with # "
-
     if not check_ollama_reachable(ollama_url):
         warn_ollama_unreachable(ollama_url)
+
+    llm_structured = enrich_user_request_with_llm(ollama_url, model, query)
+    if llm_structured:
+        request_text = (
+            "--- User request ---\n\n" + llm_structured + "\n\nOriginal: " + query + "\n\n--- End of request ---"
+        )
+        if verbose:
+            print("--- Request enriched by LLM ---", file=sys.stderr)
+            print(request_text, file=sys.stderr)
+            print("", file=sys.stderr)
+    else:
+        request_text = enrich_user_request(query)
+
+    prompt = get_prompt(
+        query, PROMPT_FILE, prompt_suffix, man_docs=man_docs_block, request_text=request_text
+    )
+    if explain:
+        prompt += "\n\nIf helpful, add one short line of explanation after the command, prefixed with # "
 
     raw = call_ollama(ollama_url, model, prompt)
     cmd = clean_command(raw)
@@ -694,7 +752,12 @@ def main() -> None:
     help_block = get_help_for_commands(command_names) if command_names else ""
     if help_block:
         prompt2 = get_prompt(
-            query, PROMPT_FILE, prompt_suffix, man_docs=man_docs_block, help_docs=help_block
+            query,
+            PROMPT_FILE,
+            prompt_suffix,
+            man_docs=man_docs_block,
+            help_docs=help_block,
+            request_text=request_text,
         )
         if explain:
             prompt2 += "\n\nIf helpful, add one short line of explanation after the command, prefixed with # "
