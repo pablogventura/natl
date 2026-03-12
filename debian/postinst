@@ -27,9 +27,9 @@ if [ "$1" = "configure" ]; then
         if [ -n "$home_dir" ] && [ -d "$home_dir" ]; then
             add_to_rc "$home_dir/.bashrc" "source /usr/share/natl/shell/bash_integration.sh"
             add_to_rc "$home_dir/.zshrc" "source /usr/share/natl/shell/zsh_integration.sh"
-            echo "natl: integración del widget (Ctrl+G) añadida a los rc de $SUDO_USER."
+            echo "natl: widget (Ctrl+G) integration added to $SUDO_USER's rc files."
         fi
     fi
-    echo "natl instalado. Ejecuta 'natl' sin argumentos para el menú de configuración."
+    echo "natl installed. Run 'natl' with no arguments for the configuration menu."
 fi
 exit 0

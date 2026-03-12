@@ -6,6 +6,7 @@
 # Editor / IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 .project
@@ -39,6 +40,16 @@ coverage.xml
 *.log
 .cache/
 
+# Temp files
+*.tmp
+*.temp
+.*.tmp
+
+# Local env / secrets (do not commit)
+.env
+.env.local
+.env.*.local
+
 # Debian package build
 debian/files
 debian/natl/
@@ -46,6 +57,8 @@ debian/.debhelper/
 debian/debhelper-build-stamp
 debian/*.substvars
 debian/*.log
+
+promo/
 
 # OS
 .DS_Store

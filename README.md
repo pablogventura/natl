@@ -104,8 +104,8 @@ Settings are saved to `~/.config/natl/config.json` and apply to all runs, includ
 To improve command accuracy, you can index man pages with embeddings and inject relevant snippets into the prompt:
 
 1. Pull an embedding model in Ollama, e.g. `ollama pull nomic-embed-text`
-2. Build the index: `natl --build-man-index` (or use option **10** in the config menu). This scans man section 1, chunks pages, and embeds them via Ollama. The index is saved to `~/.local/share/natl/man_index.json` (or the path set in config).
-3. In the config menu, enable **8) Usar RAG (man pages)**. From then on, each query will retrieve the top-k most similar chunks and add them to the prompt.
+2. Build the index: `natl --build-man-index` (or use option **11** in the config menu). This scans man section 1, chunks pages, and embeds them via Ollama. The index is saved to `~/.local/share/natl/man_index.json` (or the path set in config).
+3. In the config menu, enable **8) Use RAG (man pages)**. From then on, each query will retrieve the top-k most similar chunks and add them to the prompt.
 
 Config keys: `use_rag`, `embedding_model`, `man_index_path`, `man_top_k` (default 5), `man_max_pages` (default 500; 0 = index all). You can override the limit when building with `natl --build-man-index --man-max-pages 0` to index every man page.
 
@@ -137,6 +137,8 @@ find . -name "*.pdf"
 - **`--man-max-pages N`** — When using `--build-man-index`, index at most N man pages (0 = no limit). Default comes from config (`man_max_pages`, default 500).
 - **`-h, --help`** — Show help.
 
+A **man page** is provided: run `man natl` (when installed from the .deb package, or if `man/natl.1` is in your `MANPATH`).
+
 Environment variables (override the config file):
 
 - **`NATL_BIN`** — Path to the `natl` script (used by shell integrations).
@@ -154,7 +156,7 @@ Commands that match dangerous patterns (e.g. `rm -rf /`, `mkfs`, `dd` to devices
 ```
 natl/
 ├── natl              # Main script (Python 3)
-├── VERSION           # Single source for version (used by script and .deb build)
+├── VERSION           # Single source of version (script and .deb build)
 ├── LICENSE           # MIT, (c) Pablo Ventura
 ├── install.sh        # Install to ~/bin and add shell integration
 ├── uninstall.sh      # Uninstall
@@ -162,6 +164,8 @@ natl/
 ├── prompt.txt        # LLM prompt template
 ├── future.md         # Future ideas (e.g. dpkg triggers)
 ├── build-deb.sh      # Build .deb (checks deps, runs dpkg-buildpackage)
+├── man/
+│   └── natl.1        # Man page
 ├── debian/           # Debian package build
 │   ├── control
 │   ├── changelog

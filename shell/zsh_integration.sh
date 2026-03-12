@@ -1,8 +1,8 @@
-# Integración de natl con Zsh
-# Añade a ~/.zshrc:
-#   source /ruta/a/natl/shell/zsh_integration.sh
+# natl integration for Zsh
+# Add to ~/.zshrc:
+#   source /path/to/natl/shell/zsh_integration.sh
 #
-# Uso: igual que en Bash; Ctrl+G convierte la línea (con o sin prefijo "natl ").
+# Usage: same as Bash; Ctrl+G converts the line (with or without "natl " prefix).
 
 NATL_BIN="${NATL_BIN:-$HOME/bin/natl}"
 

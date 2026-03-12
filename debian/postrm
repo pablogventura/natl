@@ -35,6 +35,6 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
             remove_from_rc "$home_dir/.zshrc" 2>/dev/null || true
         fi
     fi
-    echo "natl: integración del widget eliminada de los archivos rc."
+    echo "natl: widget integration removed from rc files."
 fi
 exit 0

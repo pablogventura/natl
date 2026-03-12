@@ -1,0 +1,103 @@
+.\" Copyright (c) Pablo Ventura. License: MIT.
+.TH NATL 1 "2025-03-12" "0.2.0" "User Commands"
+.SH NAME
+natl \- translate natural language to a Linux shell command
+.SH SYNOPSIS
+.B natl
+[\fIoptions\fR] [\fIquery\fR...]
+.PP
+.B natl
+.RB [ \-\-build\-man\-index ]
+.RB [ \-\-man\-max\-pages \fIN\fR ]
+.SH DESCRIPTION
+.B natl
+converts natural language instructions into a single Linux shell command using a
+local LLM (Ollama). The command is printed to stdout; it is not executed.
+With shell integration (Ctrl+G), the command is inserted into your prompt so you
+can edit it or press Enter to run it.
+.PP
+When invoked with no arguments, \fBnatl\fR opens an interactive configuration
+menu. Settings are saved to \fI~/.config/natl/config.json\fR.
+.SH OPTIONS
+.TP
+.BR \-m ", " \-\-model \fI MODEL \fR
+Ollama model to use (overrides config).
+.TP
+.BR \-e ", " \-\-explain
+Ask the LLM for a brief explanation (for debugging).
+.TP
+.BR \-v ", " \-\-verbose
+Print to stderr: model, Ollama URL, RAG usage, full prompt, raw response, and
+final command.
+.TP
+.BR \-V ", " \-\-version
+Show version and exit.
+.TP
+.BR \-\-build\-man\-index
+Build the embedding index from man section 1 (user commands) for RAG, then exit.
+.TP
+.BR \-\-man\-max\-pages \fI N \fR
+When building the index, index at most \fIN\fR man pages (0 = no limit). Default
+comes from config (\fIman_max_pages\fR, default 500).
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.SH CONFIGURATION
+Running \fBnatl\fR with no arguments opens the configuration menu:
+.IP 1)
+Ollama model (e.g. \fBllama3.2\fR, \fBphi3\fR).
+.IP 2)
+Ollama URL (default \fBhttp://localhost:11434\fR).
+.IP 3)
+Extra prompt instructions (text appended to the prompt).
+.IP 4)
+Explanation by default (toggle).
+.IP 5)
+List available models from Ollama.
+.IP 6)
+View full config JSON.
+.IP 7)
+Restore defaults.
+.IP 8)
+Use RAG (man pages): inject relevant man page snippets into the prompt.
+.IP 9)
+Embedding model for RAG (e.g. \fBnomic-embed-text\fR).
+.IP 10)
+Max pages to index when building the man index (default 500; 0 = all).
+.IP 11)
+Build man page index (run once after enabling RAG).
+.SH ENVIRONMENT
+.TP
+.B NATL_BIN
+Path to the \fBnatl\fR script (used by shell integrations).
+.TP
+.B NATL_MODEL
+Ollama model (overrides config).
+.TP
+.B OLLAMA_URL
+Ollama API base URL (overrides config).
+.SH FILES
+.TP
+.I ~/.config/natl/config.json
+Configuration (model, URL, RAG settings, etc.).
+.TP
+.I ~/.local/share/natl/man_index.json
+RAG index built from man pages (when RAG is enabled).
+.SH USAGE
+With shell integration (see \fIinstall.sh\fR), type a natural language request
+in the prompt and press \fBCtrl+G\fR to replace the line with the generated
+command. You can prefix the line with \fBnatl \fR or omit it.
+.PP
+As a standalone command, \fBnatl\fR prints the generated command to stdout:
+.RS
+.PP
+\fBnatl find all pdf files\fR
+.br
+\fBfind . \-name "*.pdf"\fR
+.RE
+.SH SEE ALSO
+.BR ollama (1),
+.BR man (1)
+.PP
+Full documentation: \fI/usr/share/doc/natl/README.md\fR (when installed from
+the \.deb package), or see the project README.

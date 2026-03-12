@@ -1,16 +1,16 @@
-# Integración de natl con Bash
-# Añade a ~/.bashrc:
-#   source /ruta/a/natl/shell/bash_integration.sh
+# natl integration for Bash
+# Add to ~/.bashrc:
+#   source /path/to/natl/shell/bash_integration.sh
 #
-# Uso:
-#   - Escribir "natl listar archivos" y pulsar Ctrl+G → la línea se sustituye por el comando.
-#   - Escribir "listar archivos" y pulsar Ctrl+G → igual.
-#   - Desde otra terminal: natl listar archivos  (imprime el comando para copiar/pegar).
+# Usage:
+#   - Type "natl list files" and press Ctrl+G → the line is replaced by the command.
+#   - Type "list files" and press Ctrl+G → same.
+#   - From another terminal: natl list files  (prints the command to copy/paste).
 
 NATL_BIN="${NATL_BIN:-$HOME/bin/natl}"
 
-# Función: natl <texto> → reemplaza la línea actual por el comando (cuando se invoca desde el widget)
-# Si se ejecuta como comando normal, imprime el comando en stdout.
+# Function: natl <text> → replace current line with the command (when invoked from the widget)
+# If run as a normal command, prints the command to stdout.
 natl() {
     local cmd
     cmd=$("$NATL_BIN" "$*") || return $?
@@ -23,8 +23,8 @@ natl() {
     fi
 }
 
-# Widget: convertir línea actual en comando (Ctrl+G)
-# Si la línea empieza por "natl ", se pasa solo el resto al LLM.
+# Widget: convert current line to command (Ctrl+G)
+# If the line starts with "natl ", only the rest is passed to the LLM.
 _natl_widget() {
     local input cmd
     input="$READLINE_LINE"
