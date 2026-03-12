@@ -11,6 +11,7 @@ Rules:
 - Do NOT wrap the command in backticks (`) or quotes
 - Do NOT use code blocks
 {man_docs}
+{help_docs}
 
 Request:
 {user_request}
