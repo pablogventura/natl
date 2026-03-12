@@ -1,11 +1,35 @@
 #!/bin/sh
 set -e
-# Post-install message
+
+NATL_MARKER_START="# --- natl integration (deb)"
+NATL_MARKER_END="# --- end natl (deb)"
+
+add_to_rc() {
+    rc_file="$1"
+    source_line="$2"
+    [ -n "$rc_file" ] || return 0
+    if grep -qF "$NATL_MARKER_START" "$rc_file" 2>/dev/null; then
+        return 0
+    fi
+    [ -f "$rc_file" ] || touch "$rc_file"
+    {
+        echo ""
+        echo "$NATL_MARKER_START"
+        echo "export NATL_BIN=/usr/bin/natl"
+        echo "$source_line"
+        echo "$NATL_MARKER_END"
+    } >> "$rc_file"
+}
+
 if [ "$1" = "configure" ]; then
-    echo "natl installed. To use in your shell:"
-    echo "  export NATL_BIN=/usr/bin/natl"
-    echo "  source /usr/share/natl/shell/bash_integration.sh   # bash"
-    echo "  source /usr/share/natl/shell/zsh_integration.sh      # zsh"
-    echo "Run 'natl' with no arguments for the configuration menu."
+    if [ -n "$SUDO_UID" ] && [ -n "$SUDO_USER" ]; then
+        home_dir=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
+        if [ -n "$home_dir" ] && [ -d "$home_dir" ]; then
+            add_to_rc "$home_dir/.bashrc" "source /usr/share/natl/shell/bash_integration.sh"
+            add_to_rc "$home_dir/.zshrc" "source /usr/share/natl/shell/zsh_integration.sh"
+            echo "natl: integración del widget (Ctrl+G) añadida a los rc de $SUDO_USER."
+        fi
+    fi
+    echo "natl instalado. Ejecuta 'natl' sin argumentos para el menú de configuración."
 fi
 exit 0

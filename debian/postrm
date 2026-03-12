@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+
+NATL_MARKER_START="# --- natl integration (deb)"
+NATL_MARKER_END="# --- end natl (deb)"
+
+remove_from_rc() {
+    rc_file="$1"
+    [ -f "$rc_file" ] || return 0
+    if ! grep -qF "$NATL_MARKER_START" "$rc_file" 2>/dev/null; then
+        return 0
+    fi
+    awk -v start="$NATL_MARKER_START" -v end="$NATL_MARKER_END" '
+        index($0, start) > 0 { skip=1; next }
+        skip && index($0, end) > 0 { skip=0; next }
+        !skip { print }
+    ' "$rc_file" > "${rc_file}.natl_tmp" && mv "${rc_file}.natl_tmp" "$rc_file"
+}
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    for rc in /root/.bashrc /root/.zshrc; do
+        remove_from_rc "$rc" 2>/dev/null || true
+    done
+    for home in /home/*; do
+        [ -d "$home" ] || continue
+        for rc in "$home/.bashrc" "$home/.zshrc"; do
+            remove_from_rc "$rc" 2>/dev/null || true
+        done
+    done
+    # Also remove from the user who had run sudo at install (if we could have written there)
+    if [ -n "$SUDO_UID" ] && [ -n "$SUDO_USER" ]; then
+        home_dir=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)
+        if [ -n "$home_dir" ]; then
+            remove_from_rc "$home_dir/.bashrc" 2>/dev/null || true
+            remove_from_rc "$home_dir/.zshrc" 2>/dev/null || true
+        fi
+    fi
+    echo "natl: integración del widget eliminada de los archivos rc."
+fi
+exit 0

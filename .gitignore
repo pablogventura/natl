@@ -39,6 +39,14 @@ coverage.xml
 *.log
 .cache/
 
+# Debian package build
+debian/files
+debian/natl/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/*.substvars
+debian/*.log
+
 # OS
 .DS_Store
 Thumbs.db
