@@ -8,6 +8,8 @@ A console tool that turns **natural language** into a **single Linux shell comma
 - **Bash** or **Zsh** (for prompt integration)
 - **Ollama** running with at least one model (e.g. `llama3.2`)
 
+The tool asks Ollama for **deterministic** output (`temperature=0`, fixed `seed`, `top_k=1`) so the same request usually returns the same command.
+
 ## Installation
 
 ### Using the install script (recommended)

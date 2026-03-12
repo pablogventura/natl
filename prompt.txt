@@ -1,11 +1,15 @@
-Translate the user request to a single Linux shell command.
+Convert the request to ONE Linux shell command.
 
 Rules:
-- Return ONLY the command
+- Output only the command
+- Single line
 - No explanations
-- Assume GNU/Linux environment
-- Prefer standard POSIX utilities
-- Never generate destructive commands (rm -rf, mkfs, dd, etc.)
+- Pipelines (|) allowed
+- GNU/Linux bash environment
+- Prefer POSIX utilities
+- Never produce destructive commands
+- Do NOT wrap the command in backticks (`) or quotes
+- Do NOT use code blocks
 {man_docs}
 
 Request:

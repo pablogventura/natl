@@ -415,8 +415,18 @@ def get_prompt(
 
 
 def call_ollama(url: str, model: str, prompt: str, timeout: int = 30) -> str:
+    # Options for maximum determinism: temperature=0, fixed seed, top_k=1
     body = json.dumps(
-        {"model": model, "prompt": prompt, "stream": False},
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0,
+                "seed": 42,
+                "top_k": 1,
+            },
+        },
         ensure_ascii=False,
     ).encode("utf-8")
     req = urllib.request.Request(
