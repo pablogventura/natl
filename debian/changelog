@@ -1,3 +1,13 @@
+natl (0.2.0-1) unstable; urgency=medium
+
+  * Enrich user request with LLM before generating command.
+  * Second pass: run --help for parsed commands and re-prompt for final command.
+  * Structured user request (rule-based fallback when LLM enrichment fails).
+  * Debian: postinst adds shell widget (Ctrl+G) for sudo user; postrm removes it on uninstall.
+  * Build: .deb and artifacts moved to dist/ inside project.
+
+ -- Pablo Ventura <pablogventura@gmail.com>  Wed, 12 Mar 2025 12:00:00 +0000
+
 natl (0.1.0-1) unstable; urgency=medium
 
   * Initial release.
