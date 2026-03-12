@@ -16,7 +16,13 @@ fi
 echo "Building .deb ..."
 dpkg-buildpackage -us -uc -b
 
-DEB=$(ls -t ../natl_*_all.deb 2>/dev/null | head -1)
+# dpkg-buildpackage writes to parent dir by design; move artifacts into dist/
+mkdir -p dist
+for f in ../natl_*_all.deb ../natl_*.buildinfo ../natl_*.changes ../natl_*.dsc ../natl_*.tar.*; do
+  [[ -e $f ]] && mv -f "$f" dist/
+done
+
+DEB=$(ls -t dist/natl_*_all.deb 2>/dev/null | head -1)
 if [[ -n "$DEB" ]]; then
   echo ""
   echo "Built: $DEB"
